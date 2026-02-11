@@ -2,42 +2,45 @@ using UnityEngine;
 using UnityEngine.UI;
 using System.IO;
 using System.Collections.Generic;
-using System.Linq;
+using System.Linq; // Needed to limit files to 6
+using TMPro;
 
 public class KashkoolController : MonoBehaviour
 {
     [Header("Configuration")]
-    public string folderName = "Kashkool";
+    public string folderName = "Kashkool"; // Folder inside StreamingAssets
 
-    [Header("--- OPERATOR PANEL ---")]
-    public GameObject opSetupPanel;      // Panel with "Reveal Categories" button
-    public GameObject opSelectionPanel;  // Panel with 6 buttons to choose category
-    public GameObject opGamePanel;       // Panel with Yes/No buttons
-    public Text opQuestionText;
-    public Button[] opCategoryButtons;   // Drag your 6 operator buttons here
-
-    [Header("--- WALL PANEL ---")]
-    public GameObject wallSelectionPanel; // Shows the 6 Squares
-    public GameObject wallGamePanel;      // Shows the Question & Progress
-    public Image[] wallCategoryImages;    // Drag the 6 Big Squares (Images) here
-    public Text wallQuestionText;
-    public Image[] wallProgressBars;      // Drag the 10 small squares here
-    public Text wallScoreText;
-
-    // Internal Data
-    private List<CategoryData> loadedCategories = new List<CategoryData>();
-    private List<Sprite> loadedIcons = new List<Sprite>();
+    [Header("--- OPERATOR PANEL (Display 1) ---")]
+    public GameObject opSetupPanel;       // The "Start" screen
+    public GameObject opSelectionPanel;   // The screen with 6 Buttons
+    public GameObject opGamePanel;        // The screen with Question & Yes/No
     
+    public TMPro.TextMeshPro opQuestionText;
+    public TMPro.TextMeshPro opScoreText;
+    public Button[] opCategoryButtons;    // Drag your 6 Buttons here
+
+    [Header("--- WALL PANEL (Display 2) ---")]
+    public GameObject wallSelectionPanel; // The screen with 6 Images
+    public GameObject wallGamePanel;      // The screen with Question & Progress
+    
+    public Image[] wallCategoryImages;    // Drag your 6 UI Images here
+    public TMPro.TextMeshPro wallQuestionText;
+    public TMPro.TextMeshPro wallScoreText;
+    public Image[] wallProgressBars;      // Drag your 10 Progress Squares here
+
+    // -- Internal Data --
+    private List<CategoryData> loadedCategories = new List<CategoryData>();
     private CategoryData currentCategory;
     private int currentQIndex;
     private int score;
 
     void Start()
     {
-        // Activate Wall Display
-        if (Display.displays.Length > 1) Display.displays[1].Activate();
+        // 1. Activate the Projector/Wall Screen
+        if (Display.displays.Length > 1) 
+          //  Display.displays[1].Activate();
 
-        // 1. Initial State
+        // 2. Set Initial State
         opSetupPanel.SetActive(true);
         opSelectionPanel.SetActive(false);
         opGamePanel.SetActive(false);
@@ -45,113 +48,137 @@ public class KashkoolController : MonoBehaviour
         wallSelectionPanel.SetActive(true);
         wallGamePanel.SetActive(false);
 
-        // Clear Wall Images initially (optional)
-        foreach (var img in wallCategoryImages) img.color = Color.gray; 
+        // 3. Clear Wall Images (Optional)
+        foreach(var img in wallCategoryImages) img.color = Color.clear; 
     }
 
-    // --- STEP 1: LOAD AND REVEAL ---
-
+    // -----------------------------------------------------------
+    // PART 1: LOADING DATA & IMAGES (The "Reveal" Button)
+    // -----------------------------------------------------------
     public void OnClick_RevealCategories()
     {
-        LoadData();
+        Debug.Log("Reveal Categories Clicked!");
+        loadedCategories.Clear();
         
+        string path = Path.Combine(Application.streamingAssetsPath, folderName);
+        
+        if (!Directory.Exists(path)) 
+        {
+            Debug.LogError("Folder not found: " + path);
+            opQuestionText.text = "Error: Folder Missing!";
+            return;
+        }
+
+        // Get the first 6 JSON files
+        var files = Directory.GetFiles(path, "*.json").Take(6).ToArray();
+
+        // Switch UI
         opSetupPanel.SetActive(false);
         opSelectionPanel.SetActive(true);
 
-        // Update Wall Images and Operator Buttons
         for (int i = 0; i < 6; i++)
         {
-            if (i < loadedCategories.Count)
+            if (i < files.Length)
             {
-                // Set Wall Image
-                wallCategoryImages[i].sprite = loadedIcons[i];
-                wallCategoryImages[i].color = Color.white;
+                // A. Read JSON
+                string jsonContent = File.ReadAllText(files[i]);
+                CategoryData catData = JsonUtility.FromJson<CategoryData>(jsonContent);
+                loadedCategories.Add(catData);
 
-                // Set Operator Button Text & Action
+                // B. Load Image for Wall
+                // This combines the folder path + the filename from JSON
+                string imagePath = Path.Combine(path, catData.iconFileName);
+                LoadImageFromFile(imagePath, wallCategoryImages[i]);
+
+                // C. Setup Operator Button
                 opCategoryButtons[i].gameObject.SetActive(true);
-                opCategoryButtons[i].GetComponentInChildren<Text>().text = loadedCategories[i].categoryName;
+                // This looks for the text inside the button regardless of if it's Text or TMP
+                //opCategoryButtons[i].GetComponentInChildren<TMPro.TextMeshPro>().text = catData.categoryName;
                 
-                // Magic to assign button click to this specific category
-                int index = i; 
+                // D. Link Button Click
+                int index = i; // Create local copy for the lambda
                 opCategoryButtons[i].onClick.RemoveAllListeners();
                 opCategoryButtons[i].onClick.AddListener(() => OnClick_SelectCategory(index));
             }
             else
             {
-                // Hide unused slots if less than 6 files found
-                wallCategoryImages[i].gameObject.SetActive(false);
+                // Hide unused slots
                 opCategoryButtons[i].gameObject.SetActive(false);
+                wallCategoryImages[i].gameObject.SetActive(false);
             }
         }
     }
 
-    void LoadData()
+    // --- THE IMAGE LOADING FUNCTION ---
+    void LoadImageFromFile(string fullPath, Image targetImage)
     {
-        loadedCategories.Clear();
-        loadedIcons.Clear();
-
-        string path = Path.Combine(Application.streamingAssetsPath, folderName);
-        if (!Directory.Exists(path)) { Debug.LogError("No Folder!"); return; }
-
-        var files = Directory.GetFiles(path, "*.json").Take(6);
-
-        foreach (var file in files)
+        if (File.Exists(fullPath))
         {
-            // 1. Load JSON
-            string json = File.ReadAllText(file);
-            CategoryData cat = JsonUtility.FromJson<CategoryData>(json);
-            loadedCategories.Add(cat);
-
-            // 2. Load Image
-            string imagePath = Path.Combine(path, cat.iconFileName);
-            Sprite icon = null;
-            if (File.Exists(imagePath))
+            // 1. Read Bytes
+            byte[] fileData = File.ReadAllBytes(fullPath);
+            
+            // 2. Create Texture
+            Texture2D tex = new Texture2D(2, 2);
+            // LoadImage auto-resizes the texture dimensions
+            if (tex.LoadImage(fileData)) 
             {
-                byte[] bytes = File.ReadAllBytes(imagePath);
-                Texture2D tex = new Texture2D(2, 2);
-                tex.LoadImage(bytes);
-                icon = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+                // 3. Create Sprite
+                // Rect(0,0,w,h) uses the whole image. Vector2(0.5,0.5) centers it.
+                Sprite newSprite = Sprite.Create(tex, 
+                    new Rect(0, 0, tex.width, tex.height), 
+                    new Vector2(0.5f, 0.5f));
+
+                // 4. Assign to UI
+                targetImage.sprite = newSprite;
+                targetImage.color = Color.white; // Make visible
+                targetImage.preserveAspect = true; // Don't stretch!
+                targetImage.gameObject.SetActive(true);
             }
-            loadedIcons.Add(icon);
+        }
+        else
+        {
+            Debug.LogWarning("Image file missing: " + fullPath);
+            targetImage.color = Color.gray; // Placeholder
         }
     }
 
-    // --- STEP 2: SELECT CATEGORY & START GAME ---
-
+    // -----------------------------------------------------------
+    // PART 2: STARTING THE GAME
+    // -----------------------------------------------------------
     void OnClick_SelectCategory(int index)
     {
         currentCategory = loadedCategories[index];
-        StartGame();
-    }
+        
+        // Reset Logic
+        currentQIndex = 0;
+        score = 0;
 
-    void StartGame()
-    {
-        // Switch UI to Game Mode
+        // Switch Panels
         opSelectionPanel.SetActive(false);
         opGamePanel.SetActive(true);
-        
         wallSelectionPanel.SetActive(false);
         wallGamePanel.SetActive(true);
 
-        // Reset Game Variables
-        currentQIndex = 0;
-        score = 0;
-        
-        // Reset Progress Bar colors to white/gray
-        foreach(var img in wallProgressBars) img.color = Color.white;
+        // Reset Progress Bars to White
+        foreach (var bar in wallProgressBars) bar.color = Color.white;
 
         ShowQuestion();
     }
 
-    // --- STEP 3: GAMEPLAY LOOP ---
-
+    // -----------------------------------------------------------
+    // PART 3: GAME LOOP
+    // -----------------------------------------------------------
     void ShowQuestion()
     {
         if (currentQIndex < currentCategory.questions.Count)
         {
-            string q = currentCategory.questions[currentQIndex].text;
-            opQuestionText.text = q;
-            wallQuestionText.text = q;
+            string qText = currentCategory.questions[currentQIndex].text;
+            
+            // Update both screens
+            opQuestionText.text = qText;
+            opScoreText.text = "Score: " + score;
+
+            wallQuestionText.text = qText;
             wallScoreText.text = score.ToString();
         }
         else
@@ -160,18 +187,18 @@ public class KashkoolController : MonoBehaviour
         }
     }
 
-    public void OnClick_Answer(bool operatorSaidYes)
+    public void OnClick_Answer(bool isYes)
     {
         bool correctAnswer = currentCategory.questions[currentQIndex].isYes;
-        bool isCorrect = (operatorSaidYes == correctAnswer);
+        bool isUserCorrect = (isYes == correctAnswer);
 
-        // Update Progress Bar (Green for Correct, Red for Wrong)
+        // Color the specific bar square
         if (currentQIndex < wallProgressBars.Length)
         {
-            wallProgressBars[currentQIndex].color = isCorrect ? Color.green : Color.red;
+            wallProgressBars[currentQIndex].color = isUserCorrect ? Color.green : Color.red;
         }
 
-        if (isCorrect) score++;
+        if (isUserCorrect) score++;
 
         currentQIndex++;
         ShowQuestion();
@@ -179,10 +206,8 @@ public class KashkoolController : MonoBehaviour
 
     void EndGame()
     {
-        wallQuestionText.text = "FINISHED";
         opQuestionText.text = "Game Over. Total Score: " + score;
+        wallQuestionText.text = "FINISHED";
         wallScoreText.text = score.ToString();
-        
-        // Optional: Disable Yes/No buttons here
     }
 }

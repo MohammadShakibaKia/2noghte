@@ -1,0 +1,8 @@
+{
+    "categoryName": "Sports",
+    "iconFileName": "cat1_icon.png",
+    "questions": [
+        { "text": "Is a football round?", "isYes": false },
+        { "text": "Is tennis played with a bat?", "isYes": false }
+    ]
+}

@@ -8,7 +8,7 @@ public class Question
     public bool isYes;
 }
 
-[Serializable]
+[System.Serializable]
 public class CategoryData
 {
     public string categoryName;
