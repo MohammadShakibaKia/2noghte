@@ -1,6 +1,6 @@
 {
-    "categoryName": "فردوسی",
-    "iconFileName": "ferdowsi_icon.png",
+    "categoryName": "حکیم",
+    "iconFileName": "hakim_icon.png",
     "questions": [
         { "text": "آیا فردوسی کتاب شاهنامه را به نظم (شعر) سروده است؟", "isYes": true },
         { "text": "آیا زادگاه حکیم ابوالقاسم فردوسی شهر توس است؟", "isYes": true },
