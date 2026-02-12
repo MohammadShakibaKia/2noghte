@@ -34,6 +34,8 @@ public class KashkoolController : MonoBehaviour
     private int currentQIndex;
     private int score;
 
+    public StackableAnimation bgSystem; // Drag Background_System here
+
     void Start()
     {
         // 1. Activate the Projector/Wall Screen
@@ -55,9 +57,15 @@ public class KashkoolController : MonoBehaviour
     // -----------------------------------------------------------
     // PART 1: LOADING DATA & IMAGES (The "Reveal" Button)
     // -----------------------------------------------------------
+    public void OnClick_Backward()
+    {
+        Debug.Log("Backward Clicked!");
+        bgSystem.TriggerBack();
+    }
     public void OnClick_RevealCategories()
     {
         Debug.Log("Reveal Categories Clicked!");
+        bgSystem.TriggerForward();
         loadedCategories.Clear();
         
         string path = Path.Combine(Application.streamingAssetsPath, folderName);
