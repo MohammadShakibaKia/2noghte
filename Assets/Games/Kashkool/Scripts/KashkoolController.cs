@@ -131,7 +131,7 @@ public class KashkoolController : MonoBehaviour
     yield return new WaitUntil(() => !bgSystem.IsAnimating);
     yield return new WaitForSeconds(revealStartDelay);
 
-    uiManager.opSetupPanel.SetActive(false);
+    //uiManager.opSetupPanel.SetActive(false);
     uiManager.opSelectionPanel.SetActive(true);
 
     for (int i = 0; i < loadedCategories.Count; i++)
