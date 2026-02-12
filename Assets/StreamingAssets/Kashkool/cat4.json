@@ -1,16 +1,16 @@
 {
-    "categoryName": "Sports",
-    "iconFileName": "cat1_icon.png",
+    "categoryName": "هاشم لیلایی",
+    "iconFileName": "hashem_icon.png",
     "questions": [
-        { "text": "Is an American football round?", "isYes": false },
-        { "text": "Is tennis played with a bat?", "isYes": false },
-        { "text": "Is a standard basketball hoop 10 feet high?", "isYes": true },
-        { "text": "Does a professional golf ball have dimples?", "isYes": true },
-        { "text": "Is an Olympic swimming pool 50 meters long?", "isYes": true },
-        { "text": "Is baseball played with a rubber puck?", "isYes": false },
-        { "text": "Do soccer teams have 11 players on the field?", "isYes": true },
-        { "text": "Is a standard marathon 42.195 kilometers long?", "isYes": true },
-        { "text": "Is volleyball primarily played using your feet?", "isYes": false },
-        { "text": "Is the center of a target in archery called the Bullseye?", "isYes": true }
+        { "text": "آیا فردوسی کتاب شاهنامه را به نظم (شعر) سروده است؟", "isYes": true },
+        { "text": "آیا زادگاه حکیم ابوالقاسم فردوسی شهر توس است؟", "isYes": true },
+        { "text": "آیا سرودن شاهنامه حدود ۳۰ سال به طول انجامید؟", "isYes": true },
+        { "text": "آیا کتاب شاهنامه به زبان عربی نوشته شده است؟", "isYes": false },
+        { "text": "آیا «رستم» قهرمان اصلی و نام‌دار شاهنامه است؟", "isYes": true },
+        { "text": "آیا فردوسی در دوران حکومت صفویه زندگی می‌کرد؟", "isYes": false },
+        { "text": "آیا داستان «رستم و سهراب» در شاهنامه آمده است؟", "isYes": true },
+        { "text": "آیا شاهنامه با بیت «به نام خداوند جان و خرد» آغاز می‌شود؟", "isYes": true },
+        { "text": "آیا «سیمرغ» پرنده‌ای افسانه‌ای در داستان‌های شاهنامه است؟", "isYes": true },
+        { "text": "آیا آرامگاه فردوسی در شهر شیراز قرار دارد؟", "isYes": false }
     ]
 }

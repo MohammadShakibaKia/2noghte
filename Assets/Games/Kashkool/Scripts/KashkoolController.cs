@@ -2,190 +2,227 @@ using UnityEngine;
 using UnityEngine.UI;
 using System.IO;
 using System.Collections.Generic;
-using System.Linq; // Needed to limit files to 6
-using TMPro;
+using System.Linq;
+using RTLTMPro;
+using System.Collections;
 
 public class KashkoolController : MonoBehaviour
 {
     [Header("Configuration")]
-    public string folderName = "Kashkool"; // Folder inside StreamingAssets
+    public string folderName = "Kashkool";
+    public float revealStartDelay = 2.0f;
+    public float fadeSpeed = 1.5f;
 
-    [Header("--- OPERATOR PANEL (Display 1) ---")]
-    public GameObject opSetupPanel;       // The "Start" screen
-    public GameObject opSelectionPanel;   // The screen with 6 Buttons
-    public GameObject opGamePanel;        // The screen with Question & Yes/No
-    
-    public TMPro.TextMeshPro opQuestionText;
-    public TMPro.TextMeshPro opScoreText;
-    public Button[] opCategoryButtons;    // Drag your 6 Buttons here
+    [Header("--- ASSETS ---")]
+    public Sprite iconCorrect;
+    public Sprite iconWrong;
+    public Sprite iconDefault;
 
-    [Header("--- WALL PANEL (Display 2) ---")]
-    public GameObject wallSelectionPanel; // The screen with 6 Images
-    public GameObject wallGamePanel;      // The screen with Question & Progress
-    
-    public Image[] wallCategoryImages;    // Drag your 6 UI Images here
-    public TMPro.TextMeshPro wallQuestionText;
-    public TMPro.TextMeshPro wallScoreText;
-    public Image[] wallProgressBars;      // Drag your 10 Progress Squares here
+    [Header("--- OPERATOR PANEL ---")]
+    public GameObject opSetupPanel;
+    public GameObject opSelectionPanel;
+    public GameObject opGamePanel;
+    public RTLTextMeshPro opQuestionText;
+    public RTLTextMeshPro opScoreText;
+    public Button[] opCategoryButtons;
 
-    // -- Internal Data --
+    [Header("--- WALL PANEL ---")]
+    public GameObject wallSelectionPanel;
+    public GameObject wallGamePanel;
+    public CanvasGroup wallGamePanelCG;
+    public Image[] wallCategoryImages;
+    public RTLTextMeshPro wallQuestionText;
+    public RTLTextMeshPro wallScoreText;
+    public Image[] wallProgressBars;
+
+    public StackableAnimation bgSystem;
+
+    // Safety state to prevent fast-click issues
+    private bool isBusy = false;
     private List<CategoryData> loadedCategories = new List<CategoryData>();
     private CategoryData currentCategory;
     private int currentQIndex;
     private int score;
 
-    public StackableAnimation bgSystem; // Drag Background_System here
-
     void Start()
     {
-        // 1. Activate the Projector/Wall Screen
-        if (Display.displays.Length > 1) 
-          //  Display.displays[1].Activate();
+        ResetUIVisibility();
+    }
 
-        // 2. Set Initial State
+    void ResetUIVisibility()
+    {
         opSetupPanel.SetActive(true);
         opSelectionPanel.SetActive(false);
         opGamePanel.SetActive(false);
-        
         wallSelectionPanel.SetActive(true);
         wallGamePanel.SetActive(false);
+        if (wallGamePanelCG) wallGamePanelCG.alpha = 0;
 
-        // 3. Clear Wall Images (Optional)
-        foreach(var img in wallCategoryImages) img.color = Color.clear; 
+        foreach (var img in wallCategoryImages)
+        {
+            CanvasGroup cg = img.GetComponent<CanvasGroup>();
+            if (cg != null) cg.alpha = 0;
+            img.gameObject.SetActive(false);
+        }
     }
 
-    // -----------------------------------------------------------
-    // PART 1: LOADING DATA & IMAGES (The "Reveal" Button)
-    // -----------------------------------------------------------
-    public void OnClick_Backward()
-    {
-        Debug.Log("Backward Clicked!");
-        bgSystem.TriggerBack();
-    }
+    // --- REVEAL TRIGGER ---
     public void OnClick_RevealCategories()
     {
-        Debug.Log("Reveal Categories Clicked!");
+        if (isBusy) return;
+        StartCoroutine(RevealSequenceRoutine());
+    }
+
+    IEnumerator RevealSequenceRoutine()
+    {
+        isBusy = true;
+
+        // 1. Start Background Animation
         bgSystem.TriggerForward();
-        loadedCategories.Clear();
-        
+
+        // 2. Load Data (While animation plays)
         string path = Path.Combine(Application.streamingAssetsPath, folderName);
-        
-        if (!Directory.Exists(path)) 
+        if (!Directory.Exists(path)) { Debug.LogError("Missing Folder"); isBusy = false; yield break; }
+
+        var files = Directory.GetFiles(path, "*.json").Take(6).ToArray();
+        loadedCategories.Clear();
+
+        for (int i = 0; i < files.Length; i++)
         {
-            Debug.LogError("Folder not found: " + path);
-            opQuestionText.text = "Error: Folder Missing!";
-            return;
+            string jsonContent = File.ReadAllText(files[i]);
+            CategoryData catData = JsonUtility.FromJson<CategoryData>(jsonContent);
+            loadedCategories.Add(catData);
+
+            LoadImageFromFile(Path.Combine(path, catData.iconFileName), wallCategoryImages[i]);
+
+            // Set RTL Text
+            Transform titleT = wallCategoryImages[i].transform.Find("Title");
+            if (titleT != null)
+            {
+                Transform rtlT = titleT.Find("Text - RTLTMP");
+                if (rtlT != null) rtlT.GetComponent<RTLTextMeshPro>().text = catData.categoryName;
+            }
+
+            // Set Buttons
+            opCategoryButtons[i].gameObject.SetActive(true);
+            int index = i;
+            opCategoryButtons[i].onClick.RemoveAllListeners();
+            opCategoryButtons[i].onClick.AddListener(() => OnClick_SelectCategory(index));
         }
 
-        // Get the first 6 JSON files
-        var files = Directory.GetFiles(path, "*.json").Take(6).ToArray();
+        // 3. Wait for Background to reach "Revealed" state
+        while (bgSystem.IsAnimating) yield return null;
+        yield return new WaitForSeconds(revealStartDelay);
 
-        // Switch UI
+        // 4. Fade In Categories
         opSetupPanel.SetActive(false);
         opSelectionPanel.SetActive(true);
 
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < loadedCategories.Count; i++)
         {
-            if (i < files.Length)
-            {
-                // A. Read JSON
-                string jsonContent = File.ReadAllText(files[i]);
-                CategoryData catData = JsonUtility.FromJson<CategoryData>(jsonContent);
-                loadedCategories.Add(catData);
-
-                // B. Load Image for Wall
-                // This combines the folder path + the filename from JSON
-                string imagePath = Path.Combine(path, catData.iconFileName);
-                LoadImageFromFile(imagePath, wallCategoryImages[i]);
-
-                // C. Setup Operator Button
-                opCategoryButtons[i].gameObject.SetActive(true);
-                // This looks for the text inside the button regardless of if it's Text or TMP
-                //opCategoryButtons[i].GetComponentInChildren<TMPro.TextMeshPro>().text = catData.categoryName;
-                
-                // D. Link Button Click
-                int index = i; // Create local copy for the lambda
-                opCategoryButtons[i].onClick.RemoveAllListeners();
-                opCategoryButtons[i].onClick.AddListener(() => OnClick_SelectCategory(index));
-            }
-            else
-            {
-                // Hide unused slots
-                opCategoryButtons[i].gameObject.SetActive(false);
-                wallCategoryImages[i].gameObject.SetActive(false);
-            }
+            wallCategoryImages[i].gameObject.SetActive(true);
+            CanvasGroup cg = wallCategoryImages[i].GetComponent<CanvasGroup>();
+            while (cg.alpha < 1.0f) { cg.alpha += Time.deltaTime * fadeSpeed; yield return null; }
+            yield return new WaitForSeconds(0.2f); // Staggered reveal
         }
+
+        isBusy = false;
     }
 
-    // --- THE IMAGE LOADING FUNCTION ---
-    void LoadImageFromFile(string fullPath, Image targetImage)
+    // --- SELECT CATEGORY ---
+    public void OnClick_SelectCategory(int index)
     {
-        if (File.Exists(fullPath))
-        {
-            // 1. Read Bytes
-            byte[] fileData = File.ReadAllBytes(fullPath);
-            
-            // 2. Create Texture
-            Texture2D tex = new Texture2D(2, 2);
-            // LoadImage auto-resizes the texture dimensions
-            if (tex.LoadImage(fileData)) 
-            {
-                // 3. Create Sprite
-                // Rect(0,0,w,h) uses the whole image. Vector2(0.5,0.5) centers it.
-                Sprite newSprite = Sprite.Create(tex, 
-                    new Rect(0, 0, tex.width, tex.height), 
-                    new Vector2(0.5f, 0.5f));
+        if (isBusy) return;
 
-                // 4. Assign to UI
-                targetImage.sprite = newSprite;
-                targetImage.color = Color.white; // Make visible
-                targetImage.preserveAspect = true; // Don't stretch!
-                targetImage.gameObject.SetActive(true);
-            }
-        }
-        else
-        {
-            Debug.LogWarning("Image file missing: " + fullPath);
-            targetImage.color = Color.gray; // Placeholder
-        }
-    }
-
-    // -----------------------------------------------------------
-    // PART 2: STARTING THE GAME
-    // -----------------------------------------------------------
-    void OnClick_SelectCategory(int index)
-    {
         currentCategory = loadedCategories[index];
-        
-        // Reset Logic
         currentQIndex = 0;
         score = 0;
 
-        // Switch Panels
+        // Pass the index to handle specific icon logic
+        StartCoroutine(EnterGameModeRoutine(index));
+    }
+
+    IEnumerator EnterGameModeRoutine(int selectedIndex)
+    {
+        isBusy = true;
+
+        // 1. Fade out ALL UNSELECTED categories SIMULTANEOUSLY
+        bool anyStillFading = true;
+        while (anyStillFading)
+        {
+            anyStillFading = false;
+            for (int i = 0; i < loadedCategories.Count; i++)
+            {
+                if (i == selectedIndex) continue; // Leave the selected one alone
+
+                CanvasGroup cg = wallCategoryImages[i].GetComponent<CanvasGroup>();
+                if (cg != null && cg.alpha > 0)
+                {
+                    cg.alpha -= Time.deltaTime * fadeSpeed * 3f; // Fast simultaneous fade
+                    if (cg.alpha > 0) anyStillFading = true;
+                }
+            }
+            yield return null;
+        }
+
+        // Ensure all unselected are fully hidden
+        for (int i = 0; i < loadedCategories.Count; i++)
+        {
+            if (i != selectedIndex) wallCategoryImages[i].gameObject.SetActive(false);
+        }
+
+        // 2. PAUSE: Keep the selected category visible for 1 second
+        yield return new WaitForSeconds(1.0f);
+
+        // 3. Fade out the SELECTED category
+        CanvasGroup selectedCG = wallCategoryImages[selectedIndex].GetComponent<CanvasGroup>();
+        if (selectedCG != null)
+        {
+            while (selectedCG.alpha > 0)
+            {
+                selectedCG.alpha -= Time.deltaTime * fadeSpeed * 2f;
+                yield return null;
+            }
+            wallCategoryImages[selectedIndex].gameObject.SetActive(false);
+        }
+
+        // 4. Switch UI and start background move
         opSelectionPanel.SetActive(false);
         opGamePanel.SetActive(true);
         wallSelectionPanel.SetActive(false);
-        wallGamePanel.SetActive(true);
 
-        // Reset Progress Bars to White
-        foreach (var bar in wallProgressBars) bar.color = Color.white;
+        // Reset Bars
+        foreach (var bar in wallProgressBars) { bar.sprite = iconDefault; bar.color = Color.white; }
+
+        // 5. Wait for Background Animation to reverse back to Intro 2
+        if (bgSystem != null)
+        {
+            yield return bgSystem.TriggerBackAll();
+        }
+
+        // 6. Show Game Panel
+        wallGamePanel.SetActive(true);
+        if (wallGamePanelCG)
+        {
+            while (wallGamePanelCG.alpha < 1.0f)
+            {
+                wallGamePanelCG.alpha += Time.deltaTime * fadeSpeed;
+                yield return null;
+            }
+        }
 
         ShowQuestion();
+        isBusy = false;
     }
 
-    // -----------------------------------------------------------
-    // PART 3: GAME LOOP
-    // -----------------------------------------------------------
+    // --- GAME LOOP ---
     void ShowQuestion()
     {
         if (currentQIndex < currentCategory.questions.Count)
         {
             string qText = currentCategory.questions[currentQIndex].text;
-            
-            // Update both screens
             opQuestionText.text = qText;
             opScoreText.text = "Score: " + score;
-
             wallQuestionText.text = qText;
             wallScoreText.text = score.ToString();
         }
@@ -197,17 +234,18 @@ public class KashkoolController : MonoBehaviour
 
     public void OnClick_Answer(bool isYes)
     {
+        if (isBusy) return;
+
         bool correctAnswer = currentCategory.questions[currentQIndex].isYes;
         bool isUserCorrect = (isYes == correctAnswer);
 
-        // Color the specific bar square
         if (currentQIndex < wallProgressBars.Length)
         {
-            wallProgressBars[currentQIndex].color = isUserCorrect ? Color.green : Color.red;
+            wallProgressBars[currentQIndex].sprite = isUserCorrect ? iconCorrect : iconWrong;
+            wallProgressBars[currentQIndex].color = Color.white;
         }
 
         if (isUserCorrect) score++;
-
         currentQIndex++;
         ShowQuestion();
     }
@@ -217,5 +255,30 @@ public class KashkoolController : MonoBehaviour
         opQuestionText.text = "Game Over. Total Score: " + score;
         wallQuestionText.text = "FINISHED";
         wallScoreText.text = score.ToString();
+    }
+
+    public void OnClick_RestartGame()
+    {
+        StopAllCoroutines();
+        isBusy = false;
+
+        bgSystem.TriggerBackAll();
+        ResetUIVisibility();
+        loadedCategories.Clear();
+    }
+
+    void LoadImageFromFile(string fullPath, Image targetImage)
+    {
+        if (File.Exists(fullPath))
+        {
+            byte[] fileData = File.ReadAllBytes(fullPath);
+            Texture2D tex = new Texture2D(2, 2);
+            if (tex.LoadImage(fileData))
+            {
+                Sprite newSprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+                targetImage.sprite = newSprite;
+                targetImage.preserveAspect = true;
+            }
+        }
     }
 }
