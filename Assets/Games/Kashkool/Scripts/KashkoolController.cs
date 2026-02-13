@@ -14,15 +14,26 @@ public class KashkoolController : MonoBehaviour
 
     [Header("System References")]
     public StackableAnimation bgSystem;
-    
+
     private KashkoolDataManager dataManager;
     private KashkoolUIManager uiManager;
 
     private bool isBusy = false;
     private List<CategoryData> loadedCategories = new List<CategoryData>();
     private CategoryData currentCategory;
+
+    // Game State
+    private int currentCategoryIndex = -1;
     private int currentQIndex;
     private int score;
+    private List<bool> answerHistory = new List<bool>();
+
+    [Header("Timer Settings")]
+    [SerializeField] private float timerRemaining;
+    [SerializeField] private bool isTimerRunning = false;
+
+    // --- ADDED: Track max time for the progress bar ---
+    private float timerTotalDuration = 60f;
 
     void Awake()
     {
@@ -33,142 +44,210 @@ public class KashkoolController : MonoBehaviour
     void Start()
     {
         uiManager.ResetVisibility();
+
+        // Connect Buttons
+        if (uiManager.timerToggleButton != null)
+        {
+            uiManager.timerToggleButton.onClick.RemoveAllListeners();
+            uiManager.timerToggleButton.onClick.AddListener(OnClick_ToggleTimer);
+        }
+
+        if (uiManager.timerInputField != null)
+        {
+            uiManager.timerInputField.onEndEdit.AddListener(delegate { OnClick_SetTimer(); });
+        }
+
+        if (uiManager.undoButton != null)
+        {
+            uiManager.undoButton.onClick.RemoveAllListeners();
+            uiManager.undoButton.onClick.AddListener(OnClick_Undo);
+        }
+
+        if (dataManager.HasSaveData())
+        {
+            RestoreGame();
+        }
     }
 
-    // --- REVEAL TRIGGER ---
+    void Update()
+    {
+        if (isTimerRunning && timerRemaining > 0)
+        {
+            timerRemaining -= Time.deltaTime;
+            if (timerRemaining <= 0)
+            {
+                timerRemaining = 0;
+                isTimerRunning = false;
+                uiManager.UpdateTimerStatusUI(false);
+                OnTimerEnd();
+            }
+            uiManager.UpdateTimerDisplay(timerRemaining);
+        }
+    }
+
+    // --- TIMER LOGIC ---
+
+    public void OnClick_SetTimer()
+    {
+        if (uiManager.timerInputField == null) return;
+        string input = uiManager.timerInputField.text;
+
+        if (int.TryParse(input, out int seconds))
+        {
+            timerTotalDuration = (float)seconds; // Set Max
+            timerRemaining = timerTotalDuration;
+
+            // Init Visuals (Fill Bar full)
+            uiManager.InitializeVisualTimer(timerTotalDuration);
+            uiManager.UpdateTimerDisplay(timerRemaining);
+
+            isTimerRunning = false;
+            uiManager.UpdateTimerStatusUI(false);
+
+            Debug.Log($"[Kashkool] Timer Set: {timerRemaining}");
+        }
+    }
+
+    public void OnClick_ToggleTimer()
+    {
+        if (timerRemaining <= 0) OnClick_SetTimer();
+
+        if (timerRemaining > 0)
+        {
+            isTimerRunning = !isTimerRunning;
+            uiManager.UpdateTimerStatusUI(isTimerRunning);
+        }
+    }
+
+    private void OnTimerEnd()
+    {
+        Debug.Log("Time is up!");
+        // Play sound here if needed
+    }
+
+    // --- REVEAL SEQUENCE ---
+    // (Same as before, abbreviated for clarity)
     public void OnClick_RevealCategories()
     {
         if (isBusy) return;
+        dataManager.ClearSave();
         StartCoroutine(RevealSequenceRoutine());
     }
 
- IEnumerator RevealSequenceRoutine()
-{
-    isBusy = true;
-
-    // 1. SAFETY: Wait for BG Animation
-    if (bgSystem != null && bgSystem.IsAnimating)
+    IEnumerator RevealSequenceRoutine()
     {
-        yield return new WaitUntil(() => !bgSystem.IsAnimating);
-    }
+        isBusy = true;
 
-    // 2. Trigger Transition
-    bgSystem.TriggerForward();
-
-    // 3. Load Data
-    loadedCategories = dataManager.LoadCategoriesFromDisk();
-    if (loadedCategories.Count == 0) 
-    { 
-        Debug.LogError("No categories loaded!");
-        isBusy = false; 
-        yield break; 
-    }
-
-    // 4. Setup BOTH Wall and Operator UI
-    for (int i = 0; i < loadedCategories.Count; i++)
-    {
-        Sprite catSprite = dataManager.LoadSpriteFromFile(loadedCategories[i].iconFileName);
-        string catName = loadedCategories[i].categoryName;
-
-        // --- A. SETUP WALL UI ---
-        if (i < uiManager.wallCategoryImages.Length)
+        // Ensure the grid is working again for the new setup
+        if (uiManager.wallCategoryImages.Length > 0)
         {
-            Image wallImg = uiManager.wallCategoryImages[i];
-            wallImg.sprite = catSprite;
-            wallImg.preserveAspect = true;
-
-            Transform titleT = wallImg.transform.Find("Title");
-            if (titleT != null)
+            Transform gridParent = uiManager.wallCategoryImages[0].transform.parent;
+            LayoutGroup layout = gridParent.GetComponent<LayoutGroup>();
+            if (layout != null)
             {
-                Transform rtlT = titleT.Find("Text - RTLTMP");
-                if (rtlT != null) rtlT.GetComponent<RTLTextMeshPro>().text = catName;
+                layout.enabled = true; // Re-enable sorting
             }
         }
+        // ----------------------------
+        if (bgSystem != null && bgSystem.IsAnimating) yield return new WaitUntil(() => !bgSystem.IsAnimating);
 
-        // --- B. SETUP OPERATOR UI (UPDATED & ROBUST) ---
-        if (i < uiManager.opCategoryButtons.Length)
+        bgSystem.TriggerForward();
+        loadedCategories = dataManager.LoadCategoriesFromDisk();
+
+        // Setup UI Loop (Images, Buttons) - Same as previous script
+        for (int i = 0; i < loadedCategories.Count; i++)
         {
-            Button opBtn = uiManager.opCategoryButtons[i];
+            Sprite catSprite = dataManager.LoadSpriteFromFile(loadedCategories[i].iconFileName);
+            string catName = loadedCategories[i].categoryName;
 
-            if (opBtn != null)
+            // Setup Wall & Operator (Code from previous step goes here - standard setup)
+            if (i < uiManager.wallCategoryImages.Length)
             {
-                // 1. Set Image (Try component on Button, then check children)
+                Image wallImg = uiManager.wallCategoryImages[i];
+                wallImg.sprite = catSprite;
+                Transform titleT = wallImg.transform.Find("Title");
+                if (titleT != null)
+                {
+                    Transform rtlT = titleT.Find("Text - RTLTMP");
+                    if (rtlT != null) rtlT.GetComponent<RTLTextMeshPro>().text = catName;
+                }
+            }
+            if (i < uiManager.opCategoryButtons.Length)
+            {
+                Button opBtn = uiManager.opCategoryButtons[i];
                 Image opImg = opBtn.GetComponent<Image>();
-                if (opImg == null) opImg = opBtn.GetComponentInChildren<Image>(true); // Fallback to child
-
-                if (opImg != null)
-                {
-                    opImg.sprite = catSprite;
-                    opImg.preserveAspect = true;
-                }
-                else
-                {
-                    Debug.LogWarning($"Op Button {i} has no Image component!");
-                }
-
-                // 2. Set Text (Scans ALL children, ignores hierarchy structure)
+                if (opImg == null) opImg = opBtn.GetComponentInChildren<Image>(true);
+                if (opImg != null) opImg.sprite = catSprite;
                 RTLTextMeshPro opRtl = opBtn.GetComponentInChildren<RTLTextMeshPro>(true);
-                if (opRtl != null)
-                {
-                    opRtl.text = catName;
-                }
-                else
-                {
-                    Debug.LogWarning($"Op Button {i} has no RTLTextMeshPro component in children!");
-                }
-
-                // 3. Setup Button Interaction
+                if (opRtl != null) opRtl.text = catName;
                 int index = i;
                 opBtn.onClick.RemoveAllListeners();
                 opBtn.onClick.AddListener(() => OnClick_SelectCategory(index));
-                
                 opBtn.gameObject.SetActive(true);
             }
         }
+
+        yield return new WaitUntil(() => !bgSystem.IsAnimating);
+        yield return new WaitForSeconds(revealStartDelay);
+
+        uiManager.opSelectionPanel.SetActive(true);
+
+        // Fade In
+        for (int i = 0; i < loadedCategories.Count; i++)
+        {
+            if (i < uiManager.wallCategoryImages.Length)
+            {
+                uiManager.wallCategoryImages[i].gameObject.SetActive(true);
+                CanvasGroup wallCG = uiManager.wallCategoryImages[i].GetComponent<CanvasGroup>();
+                if (!wallCG) wallCG = uiManager.wallCategoryImages[i].gameObject.AddComponent<CanvasGroup>();
+                StartCoroutine(uiManager.FadeCanvasGroup(wallCG, 0, 1, fadeSpeed));
+            }
+            if (i < uiManager.opCategoryButtons.Length)
+            {
+                CanvasGroup opCG = uiManager.opCategoryButtons[i].GetComponent<CanvasGroup>();
+                if (!opCG) opCG = uiManager.opCategoryButtons[i].gameObject.AddComponent<CanvasGroup>();
+                StartCoroutine(uiManager.FadeCanvasGroup(opCG, 0, 1, fadeSpeed));
+            }
+            yield return new WaitForSeconds(0.2f);
+        }
+        isBusy = false;
     }
 
-    // 5. WAIT & FADE
-    yield return new WaitUntil(() => !bgSystem.IsAnimating);
-    yield return new WaitForSeconds(revealStartDelay);
+    // --- GAME LOGIC ---
 
-    //uiManager.opSetupPanel.SetActive(false);
-    uiManager.opSelectionPanel.SetActive(true);
-
-    for (int i = 0; i < loadedCategories.Count; i++)
-    {
-        // Fade Wall
-        if (i < uiManager.wallCategoryImages.Length)
-        {
-            uiManager.wallCategoryImages[i].gameObject.SetActive(true);
-            CanvasGroup wallCG = uiManager.wallCategoryImages[i].GetComponent<CanvasGroup>();
-            StartCoroutine(uiManager.FadeCanvasGroup(wallCG, 0, 1, fadeSpeed));
-        }
-
-        // Fade Operator
-        if (i < uiManager.opCategoryButtons.Length)
-        {
-            CanvasGroup opCG = uiManager.opCategoryButtons[i].GetComponent<CanvasGroup>();
-            if (opCG == null) opCG = uiManager.opCategoryButtons[i].gameObject.AddComponent<CanvasGroup>();
-            
-            // Force Alpha to 0 initially so we see the fade
-            opCG.alpha = 0; 
-            StartCoroutine(uiManager.FadeCanvasGroup(opCG, 0, 1, fadeSpeed));
-        }
-
-        yield return new WaitForSeconds(0.2f);
-    }
-
-    isBusy = false;
-}
-
-    // --- SELECT CATEGORY ---
     public void OnClick_SelectCategory(int index)
     {
         if (isBusy) return;
 
+        Debug.Log($"[DEBUG] Category {index} Clicked. Checking Timer...");
+
+        // 1. Force read the input field text
+        if (uiManager.timerInputField != null)
+        {
+            string text = uiManager.timerInputField.text;
+            Debug.Log($"[DEBUG] Input Field Text is: '{text}'");
+
+            if (int.TryParse(text, out int secondsInput) && secondsInput > 0)
+            {
+                timerTotalDuration = secondsInput; // Update Max Time
+                timerRemaining = secondsInput;     // Update Current Time
+                Debug.Log($"[DEBUG] Time Set Successfully to: {timerRemaining}");
+            }
+            else
+            {
+                Debug.LogWarning("[DEBUG] Could not parse time or time is 0. Timer will NOT start.");
+            }
+        }
+
+        currentCategoryIndex = index;
         currentCategory = loadedCategories[index];
         currentQIndex = 0;
         score = 0;
+        answerHistory.Clear();
+        uiManager.ResetProgressBars();
+
+        // 2. Initialize the Wall Timer Visuals explicitly here
+        uiManager.InitializeVisualTimer(timerTotalDuration);
 
         StartCoroutine(EnterGameModeRoutine(index));
     }
@@ -176,66 +255,91 @@ public class KashkoolController : MonoBehaviour
     IEnumerator EnterGameModeRoutine(int selectedIndex)
     {
         isBusy = true;
-
         List<Coroutine> fadeRoutines = new List<Coroutine>();
 
-        // 1. Fade out UNSELECTED (Both Wall and Op)
-        for (int i = 0; i < loadedCategories.Count; i++)
+        // 1. Fade OUT the unselected ones
+        for (int i = 0; i < uiManager.wallCategoryImages.Length; i++)
         {
-            if (i == selectedIndex) continue;
+            if (uiManager.wallCategoryImages[i] == null || !uiManager.wallCategoryImages[i].gameObject.activeSelf) continue;
 
-            // Wall Fade Out
-            CanvasGroup wCG = uiManager.wallCategoryImages[i].GetComponent<CanvasGroup>();
-            if (wCG != null) fadeRoutines.Add(StartCoroutine(uiManager.FadeCanvasGroup(wCG, wCG.alpha, 0, fadeSpeed * 3f)));
-
-            // Op Fade Out
-            CanvasGroup oCG = uiManager.opCategoryButtons[i].GetComponent<CanvasGroup>();
-            if (oCG != null) fadeRoutines.Add(StartCoroutine(uiManager.FadeCanvasGroup(oCG, oCG.alpha, 0, fadeSpeed * 3f)));
-        }
-
-        foreach (var r in fadeRoutines) yield return r;
-
-        for (int i = 0; i < loadedCategories.Count; i++)
-        {
-            if (i != selectedIndex) 
+            if (i != selectedIndex)
             {
-                uiManager.wallCategoryImages[i].gameObject.SetActive(false);
-                uiManager.opCategoryButtons[i].gameObject.SetActive(false);
+                CanvasGroup wCG = uiManager.wallCategoryImages[i].GetComponent<CanvasGroup>();
+                if (!wCG) wCG = uiManager.wallCategoryImages[i].gameObject.AddComponent<CanvasGroup>();
+                // Just fade the alpha to 0, do NOT deactivate yet
+                fadeRoutines.Add(StartCoroutine(uiManager.FadeCanvasGroup(wCG, wCG.alpha, 0, fadeSpeed * 3f)));
             }
         }
 
-        // 2. Pause
+        // Wait for those fades to finish
+        foreach (var r in fadeRoutines) yield return r;
+
+        // --- REMOVE OR COMMENT OUT THIS LOOP BELOW ---
+        /* 
+        for (int i = 0; i < uiManager.wallCategoryImages.Length; i++)
+            if (i != selectedIndex && uiManager.wallCategoryImages[i] != null) 
+                 uiManager.wallCategoryImages[i].gameObject.SetActive(false); 
+        */
+        // ----------------------------------------------
+
         yield return new WaitForSeconds(1.0f);
 
-        // 3. Fade out SELECTED
-        CanvasGroup selWallCG = uiManager.wallCategoryImages[selectedIndex].GetComponent<CanvasGroup>();
-        yield return StartCoroutine(uiManager.FadeCanvasGroup(selWallCG, 1, 0, fadeSpeed * 2f));
-        uiManager.wallCategoryImages[selectedIndex].gameObject.SetActive(false);
-        
-        // Hide Op Button too
-        uiManager.opCategoryButtons[selectedIndex].gameObject.SetActive(false);
+        // 2. Fade out the SELECTED one (the one that stayed in its spot)
+        if (selectedIndex < uiManager.wallCategoryImages.Length)
+        {
+            CanvasGroup selWallCG = uiManager.wallCategoryImages[selectedIndex].GetComponent<CanvasGroup>();
+            if (selWallCG != null) yield return StartCoroutine(uiManager.FadeCanvasGroup(selWallCG, 1, 0, fadeSpeed * 2f));
+        }
 
-        // 4. Switch Panels
+        // 3. NOW deactivate the entire panel at once
+        // This is where everything gets cleaned up safely
         uiManager.opSelectionPanel.SetActive(false);
-        uiManager.opGamePanel.SetActive(true);
         uiManager.wallSelectionPanel.SetActive(false);
-        uiManager.ResetProgressBars();
 
-        // 5. Back Animation
+        // Turn off individual images now that the whole panel is hidden
+        for (int i = 0; i < uiManager.wallCategoryImages.Length; i++)
+        {
+            if (uiManager.wallCategoryImages[i] != null)
+                uiManager.wallCategoryImages[i].gameObject.SetActive(false);
+        }
+
+        // ... continue with starting the game panel ...
+        uiManager.opGamePanel.SetActive(true);
         if (bgSystem != null) yield return bgSystem.TriggerBackAll();
-
-        // 6. Show Game Panel
         uiManager.wallGamePanel.SetActive(true);
-        yield return StartCoroutine(uiManager.FadeCanvasGroup(uiManager.wallGamePanelCG, 0, 1, fadeSpeed));
 
         ShowQuestion();
+
+        yield return StartCoroutine(uiManager.FadeCanvasGroup(uiManager.wallGamePanelCG, 0, 1, fadeSpeed));
+
+        // --- FIX: Force Update Visuals AFTER Panel is Visible ---
+        Debug.Log($"[DEBUG] Game Panel Active. Timer Remaining: {timerRemaining}");
+
+        // 1. Ensure the circle bar knows the total time
+        uiManager.InitializeVisualTimer(timerTotalDuration);
+
+        // 2. Force the text/fill to update immediately
+        uiManager.UpdateTimerDisplay(timerRemaining);
+
+        // 3. Auto-Start Logic
+        if (timerRemaining > 0)
+        {
+            isTimerRunning = true;
+            uiManager.UpdateTimerStatusUI(true);
+            Debug.Log("[DEBUG] Timer Started Automatically.");
+        }
+        else
+        {
+            Debug.LogWarning("[DEBUG] Timer did not start because timerRemaining is 0.");
+        }
+
         isBusy = false;
+        SaveProgress();
     }
 
-    // --- GAME LOOP ---
     void ShowQuestion()
     {
-        if (currentQIndex < currentCategory.questions.Count)
+        if (currentCategory != null && currentQIndex < currentCategory.questions.Count)
         {
             string qText = currentCategory.questions[currentQIndex].text;
             uiManager.UpdateScoreUI(qText, score);
@@ -249,14 +353,26 @@ public class KashkoolController : MonoBehaviour
     public void OnClick_Answer(bool isYes)
     {
         if (isBusy) return;
-
         bool correctAnswer = currentCategory.questions[currentQIndex].isYes;
         bool isUserCorrect = (isYes == correctAnswer);
-
+        answerHistory.Add(isUserCorrect);
         uiManager.SetProgressBar(currentQIndex, isUserCorrect);
-
         if (isUserCorrect) score++;
         currentQIndex++;
+        SaveProgress();
+        ShowQuestion();
+    }
+
+    public void OnClick_Undo()
+    {
+        if (isBusy || currentQIndex <= 0) return;
+        currentQIndex--;
+        bool lastWasCorrect = answerHistory[currentQIndex];
+        if (lastWasCorrect) score--;
+        answerHistory.RemoveAt(currentQIndex);
+        uiManager.wallProgressBars[currentQIndex].sprite = uiManager.iconDefault;
+        uiManager.wallProgressBars[currentQIndex].color = Color.white;
+        SaveProgress();
         ShowQuestion();
     }
 
@@ -265,14 +381,69 @@ public class KashkoolController : MonoBehaviour
         uiManager.opQuestionText.text = "Game Over. Total Score: " + score;
         uiManager.wallQuestionText.text = "FINISHED";
         uiManager.wallScoreText.text = score.ToString();
+        dataManager.ClearSave();
     }
 
     public void OnClick_RestartGame()
     {
         StopAllCoroutines();
         isBusy = false;
+        dataManager.ClearSave();
+        answerHistory.Clear();
+        timerRemaining = 0;
+        isTimerRunning = false;
+        uiManager.UpdateTimerDisplay(0);
+        uiManager.UpdateTimerStatusUI(false);
         if (bgSystem != null) bgSystem.TriggerBackAll();
         uiManager.ResetVisibility();
         loadedCategories.Clear();
+    }
+
+    // --- SAVE / LOAD ---
+    void SaveProgress()
+    {
+        // GameSaveData data = new GameSaveData();
+        // data.categoryIndex = currentCategoryIndex;
+        // data.questionIndex = currentQIndex;
+        // data.score = score;
+        // data.timerRemaining = timerRemaining;
+        // data.timerTotal = timerTotalDuration; // Save Max Time too!
+        // data.answerHistory = answerHistory;
+        // dataManager.SaveGame(data);
+    }
+
+    void RestoreGame()
+    {
+        // GameSaveData data = dataManager.LoadGame();
+        // if (data == null) return;
+
+        // loadedCategories = dataManager.LoadCategoriesFromDisk();
+        // if (data.categoryIndex >= loadedCategories.Count) { dataManager.ClearSave(); return; }
+
+        // currentCategoryIndex = data.categoryIndex;
+        // currentCategory = loadedCategories[currentCategoryIndex];
+        // currentQIndex = data.questionIndex;
+        // score = data.score;
+        // timerRemaining = data.timerRemaining;
+        // timerTotalDuration = data.timerTotal; // Restore Max Time
+        // answerHistory = data.answerHistory;
+
+        // uiManager.ResetVisibility();
+        // uiManager.opSelectionPanel.SetActive(false);
+        // uiManager.opGamePanel.SetActive(true);
+        // uiManager.wallSelectionPanel.SetActive(false);
+        // uiManager.wallGamePanel.SetActive(true);
+        // if(uiManager.wallGamePanelCG) uiManager.wallGamePanelCG.alpha = 1;
+
+        // uiManager.ResetProgressBars();
+        // for(int i=0; i<answerHistory.Count; i++) uiManager.SetProgressBar(i, answerHistory[i]);
+
+        // // Init Visual Timer on Load
+        // uiManager.InitializeVisualTimer(timerTotalDuration);
+        // uiManager.UpdateTimerDisplay(timerRemaining);
+
+        // isTimerRunning = false;
+        // uiManager.UpdateTimerStatusUI(false);
+        // ShowQuestion();
     }
 }
