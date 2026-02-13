@@ -43,6 +43,16 @@ public class KashkoolController : MonoBehaviour
 
     void Start()
     {
+
+      
+        Debug.Log("Displays connected: " + Display.displays.Length);
+
+        if (Display.displays.Length > 1)
+        {
+            Display.displays[1].Activate();
+        }
+    
+
         uiManager.ResetVisibility();
 
         // Connect Buttons
