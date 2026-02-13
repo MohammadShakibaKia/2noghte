@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using System.Collections;
 using System.Collections.Generic;
 using RTLTMPro;
+using UnityEngine.SceneManagement;
 
 [RequireComponent(typeof(KashkoolDataManager))]
 [RequireComponent(typeof(KashkoolUIManager))]
@@ -389,25 +390,36 @@ public class KashkoolController : MonoBehaviour
     void EndGame()
     {
         uiManager.opQuestionText.text = "Game Over. Total Score: " + score;
-        uiManager.wallQuestionText.text = "FINISHED";
+        uiManager.wallQuestionText.text = "";
         uiManager.wallScoreText.text = score.ToString();
         dataManager.ClearSave();
     }
 
     public void OnClick_RestartGame()
-    {
-        StopAllCoroutines();
-        isBusy = false;
-        dataManager.ClearSave();
-        answerHistory.Clear();
-        timerRemaining = 0;
-        isTimerRunning = false;
-        uiManager.UpdateTimerDisplay(0);
-        uiManager.UpdateTimerStatusUI(false);
-        if (bgSystem != null) bgSystem.TriggerBackAll();
-        uiManager.ResetVisibility();
-        loadedCategories.Clear();
-    }
+{
+    // Stop everything
+    StopAllCoroutines();
+    isBusy = false;
+    isTimerRunning = false;
+
+    // Clear saved data
+    dataManager.ClearSave();
+
+    // Reload the current scene completely
+    SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+}
+
+
+public void OnClick_ExitGame()
+{
+    Debug.Log("Exiting Game...");
+
+    #if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+    #else
+        Application.Quit();
+    #endif
+}
 
     // --- SAVE / LOAD ---
     void SaveProgress()
