@@ -6,101 +6,106 @@ using TMPro;
 
 public class EmdadiUIManager : MonoBehaviour
 {
+    [Header("--- TIMER UI ---")]
+    public TMP_InputField timerInputField; 
+    public Button timerToggleButton; 
+    public RTLTextMeshPro timerStatusText; 
+    public KashkoolTimerUI timerUI; // Visual Circle
+
+    [Header("--- SYSTEM BUTTONS ---")]
+    public Button restartButton;
+    public Button exitButton;
+
+    [Header("--- ANIMATION ---")]
+    public TripleStackAnimation introAnimation;
+
     [Header("--- WALL PANEL (Display 2) ---")]
     public GameObject wallPanel;
     public RTLTextMeshPro wallCenterWordText;
     public RTLTextMeshPro wallTotalScoreText;
 
     [Header("Tasks (Right Side)")]
-    // Assign the 5 Text objects for the tasks here (Top to Bottom)
     public RTLTextMeshPro[] wallTaskTexts; 
 
-    [Header("Selectors (The Yellow Boxes)")]
-    // The highlighted box for the Right side (Tasks)
+    [Header("Selectors")]
     public RectTransform taskSelectorBox; 
-    // The highlighted box for the Left side (Scores)
     public RectTransform scoreSelectorBox; 
-
-    [Header("Row Positions")]
-    // Drag the 5 Row GameObjects here. We use their positions to snap the Yellow Boxes.
     public RectTransform[] rowTransforms;
 
     [Header("--- OPERATOR PANEL (Display 1) ---")]
     public GameObject opPanel;
     public RTLTextMeshPro opCenterWordText;
     public RTLTextMeshPro opTotalScoreText;
-    public RTLTextMeshPro opStatusText; // Shows "Row 1" or "Round Over"
+    public RTLTextMeshPro opStatusText;
 
     [Header("Controls")]
-    public Button btnCorrect;   // "Correct / Next Step"
-    public Button btnNextWord;  // "Next Person / Word"
-    public Button btnUndo;      // Optional Undo
+    public Button btnCorrect;
+    public Button btnNextWord;
+    public Button btnUndo;
+    public Button btnSkip;   
+
+    private Vector3 initialTaskSelectorPos;
+    private Vector3 initialScoreSelectorPos;
+    private bool isInitialized = false;
+
+    void Awake()
+    {
+        if (taskSelectorBox != null) initialTaskSelectorPos = taskSelectorBox.position;
+        if (scoreSelectorBox != null) initialScoreSelectorPos = scoreSelectorBox.position;
+        isInitialized = true;
+    }
 
     public void InitializeUI()
     {
         wallPanel.SetActive(true);
         opPanel.SetActive(true);
         UpdateScore(0);
+        
+        if(isInitialized)
+        {
+             if(taskSelectorBox) taskSelectorBox.position = initialTaskSelectorPos;
+             if(scoreSelectorBox) scoreSelectorBox.position = initialScoreSelectorPos;
+        }
     }
 
-    public void UpdateWord(string word)
+    // --- TIMER UI HELPERS ---
+    public void UpdateTimerStatusUI(bool isRunning)
     {
-        if (wallCenterWordText) wallCenterWordText.text = word;
-        if (opCenterWordText) opCenterWordText.text = word;
+        if (timerStatusText != null)
+            timerStatusText.text = isRunning ? "PAUSE" : "RESUME";
+            
+        if (timerToggleButton != null)
+            timerToggleButton.image.color = isRunning ? Color.red : Color.green;
     }
 
-    public void UpdateScore(int totalScore)
-    {
-        if (wallTotalScoreText) wallTotalScoreText.text = totalScore.ToString();
-        if (opTotalScoreText) opTotalScoreText.text = "Total: " + totalScore;
-    }
-
-    public void UpdateTaskTexts(List<string> tasks)
+    public void UpdateWord(string word) { if (wallCenterWordText) wallCenterWordText.text = word; if (opCenterWordText) opCenterWordText.text = word; }
+    public void UpdateScore(int totalScore) { if (wallTotalScoreText) wallTotalScoreText.text = totalScore.ToString(); if (opTotalScoreText) opTotalScoreText.text = "Total: " + totalScore; }
+    
+    public void UpdateTaskTexts(List<string> tasks) 
     {
         for (int i = 0; i < wallTaskTexts.Length; i++)
         {
-            if (i < tasks.Count)
-                wallTaskTexts[i].text = tasks[i];
-            else
-                wallTaskTexts[i].text = "";
+            if (i < tasks.Count) wallTaskTexts[i].text = tasks[i];
+            else wallTaskTexts[i].text = "";
         }
     }
 
     public void SetSelectorPosition(int rowIndex)
     {
-        // Check if index is valid (0 to 4)
-        if (rowIndex >= 0 && rowIndex < rowTransforms.Length)
+        if (rowIndex < 0 || rowIndex >= rowTransforms.Length)
         {
-            // Activate boxes
-            if(taskSelectorBox) taskSelectorBox.gameObject.SetActive(true);
-            if(scoreSelectorBox) scoreSelectorBox.gameObject.SetActive(true);
-
-            // Move Right Selector (Task)
-            if (taskSelectorBox && rowTransforms[rowIndex] != null)
-            {
-                // Keep X, change Y to match the row
-                Vector3 newPos = taskSelectorBox.position;
-                newPos.y = rowTransforms[rowIndex].position.y;
-                taskSelectorBox.position = newPos;
-            }
-
-            // Move Left Selector (Score)
-            if (scoreSelectorBox && rowTransforms[rowIndex] != null)
-            {
-                Vector3 newPos = scoreSelectorBox.position;
-                newPos.y = rowTransforms[rowIndex].position.y;
-                scoreSelectorBox.position = newPos;
-            }
-
-            if(opStatusText) opStatusText.text = $"Current: Row {rowIndex + 1} ({5 - rowIndex} pts)";
-        }
-        else
-        {
-            // If index is out of bounds (e.g. round finished), hide selectors
             if (taskSelectorBox) taskSelectorBox.gameObject.SetActive(false);
             if (scoreSelectorBox) scoreSelectorBox.gameObject.SetActive(false);
-            
-            if(opStatusText) opStatusText.text = "Round Finished. Click Next Word.";
+            return;
+        }
+        if (taskSelectorBox) taskSelectorBox.gameObject.SetActive(true);
+        if (scoreSelectorBox) scoreSelectorBox.gameObject.SetActive(true);
+
+        if (rowTransforms.Length > 0 && rowTransforms[0] != null && rowTransforms[rowIndex] != null)
+        {
+            float verticalDiff = rowTransforms[rowIndex].position.y - rowTransforms[0].position.y;
+            if (taskSelectorBox) { Vector3 newPos = initialTaskSelectorPos; newPos.y += verticalDiff; taskSelectorBox.position = newPos; }
+            if (scoreSelectorBox) { Vector3 newPos = initialScoreSelectorPos; newPos.y += verticalDiff; scoreSelectorBox.position = newPos; }
         }
     }
-}   
+}

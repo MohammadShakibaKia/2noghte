@@ -11,6 +11,7 @@ public class TripleStackAnimation : MonoBehaviour
     [Header("--- BLENDING (0 = Sequential, 1 = Instant Start) ---")]
     [Range(0f, 1f)] public float blendIntro2 = 0.5f; 
     [Range(0f, 1f)] public float blendFinal = 0.5f;
+    [Range(0f, 1f)] public float blendUIFade = 0.5f; // <--- NEW: 1.0 means UI starts fading exactly when Final Layer starts
 
     [System.Serializable]
     public class AnimData
@@ -52,12 +53,10 @@ public class TripleStackAnimation : MonoBehaviour
         StopAllCoroutines();
         isPlaying = false;
         
-        // Hide Images
         if (intro1.targetImage) intro1.targetImage.gameObject.SetActive(false);
         if (intro2.targetImage) intro2.targetImage.gameObject.SetActive(false);
         if (finalLayer.targetImage) finalLayer.targetImage.gameObject.SetActive(false);
 
-        // Reset UI Alphas to 0
         if (timerCanvasGroup) timerCanvasGroup.alpha = 0f;
         if (wordPanelCanvasGroup) wordPanelCanvasGroup.alpha = 0f;
     }
@@ -71,7 +70,6 @@ public class TripleStackAnimation : MonoBehaviour
         {
             intro1.targetImage.gameObject.SetActive(true);
             StartCoroutine(PlayLayer(intro1));
-            
             float duration = intro1.frames.Length / (intro1.fps * globalSpeedMultiplier);
             yield return new WaitForSeconds(duration * (1f - blendIntro2));
         }
@@ -81,21 +79,36 @@ public class TripleStackAnimation : MonoBehaviour
         {
             intro2.targetImage.gameObject.SetActive(true);
             StartCoroutine(PlayLayer(intro2));
-
             float duration = intro2.frames.Length / (intro2.fps * globalSpeedMultiplier);
             yield return new WaitForSeconds(duration * (1f - blendFinal));
         }
 
-        // --- PHASE 3: FINAL LAYER ---
+        // --- PHASE 3 & 4: FINAL LAYER & UI FADE (OVERLAPPING) ---
         if (IsValid(finalLayer))
         {
             finalLayer.targetImage.gameObject.SetActive(true);
-            // Wait for this one to finish completely
-            yield return StartCoroutine(PlayLayer(finalLayer));
-        }
+            
+            // 1. Start the Final Animation but DO NOT "yield return" (don't wait yet)
+            Coroutine finalAnimTask = StartCoroutine(PlayLayer(finalLayer));
+            
+            // 2. Calculate when the UI should start fading
+            float animDuration = finalLayer.frames.Length / (finalLayer.fps * globalSpeedMultiplier);
+            float waitBeforeFade = animDuration * (1f - blendUIFade);
 
-        // --- PHASE 4: UI FADE IN ---
-        yield return StartCoroutine(FadeInUI());
+            // 3. Wait for the partial duration
+            if (waitBeforeFade > 0) yield return new WaitForSeconds(waitBeforeFade);
+
+            // 4. Start UI Fade (This happens while animation is still playing)
+            yield return StartCoroutine(FadeInUI());
+
+            // 5. Safety: Make sure the final animation is actually finished before ending
+            yield return finalAnimTask;
+        }
+        else
+        {
+            // If no final layer, just fade UI
+            yield return StartCoroutine(FadeInUI());
+        }
 
         // --- FINISHED ---
         isPlaying = false;
@@ -130,7 +143,6 @@ public class TripleStackAnimation : MonoBehaviour
             yield return null;
         }
 
-        // Ensure they are exactly 1 at the end
         if (timerCanvasGroup) timerCanvasGroup.alpha = 1f;
         if (wordPanelCanvasGroup) wordPanelCanvasGroup.alpha = 1f;
     }
