@@ -30,6 +30,7 @@ public class KashkoolController : MonoBehaviour
     private List<bool> answerHistory = new List<bool>();
 
     [Header("Timer Settings")]
+    [SerializeField] private float defaultTimerDuration = 10f;
     [SerializeField] private float timerRemaining;
     [SerializeField] private bool isTimerRunning = false;
 
@@ -45,14 +46,23 @@ public class KashkoolController : MonoBehaviour
     void Start()
     {
 
-      
+
+        // --- ADD THIS LOGIC ---
+        timerTotalDuration = defaultTimerDuration;
+        timerRemaining = timerTotalDuration;
+
+        // Show the default value in the Input Field so the operator sees it
+        if (uiManager.timerInputField != null)
+        {
+            uiManager.timerInputField.text = timerTotalDuration.ToString();
+        }
         Debug.Log("Displays connected: " + Display.displays.Length);
 
         if (Display.displays.Length > 1)
         {
             Display.displays[1].Activate();
         }
-    
+
 
         uiManager.ResetVisibility();
 
@@ -134,6 +144,8 @@ public class KashkoolController : MonoBehaviour
     {
         Debug.Log("Time is up!");
         // Play sound here if needed
+        OnClick_Answer(false);
+
     }
 
     // --- REVEAL SEQUENCE ---
@@ -332,34 +344,48 @@ public class KashkoolController : MonoBehaviour
         // 2. Force the text/fill to update immediately
         uiManager.UpdateTimerDisplay(timerRemaining);
 
-        // 3. Auto-Start Logic
-        if (timerRemaining > 0)
-        {
-            isTimerRunning = true;
-            uiManager.UpdateTimerStatusUI(true);
-            Debug.Log("[DEBUG] Timer Started Automatically.");
-        }
-        else
-        {
-            Debug.LogWarning("[DEBUG] Timer did not start because timerRemaining is 0.");
-        }
+        // // 3. Auto-Start Logic
+        // if (timerRemaining > 0)
+        // {
+        //     isTimerRunning = true;
+        //     uiManager.UpdateTimerStatusUI(true);
+        //     Debug.Log("[DEBUG] Timer Started Automatically.");
+        // }
+        // else
+        // {
+        //     Debug.LogWarning("[DEBUG] Timer did not start because timerRemaining is 0.");
+        // }
 
         isBusy = false;
         SaveProgress();
     }
 
     void ShowQuestion()
+{
+    if (currentCategory != null && currentQIndex < currentCategory.questions.Count)
     {
-        if (currentCategory != null && currentQIndex < currentCategory.questions.Count)
-        {
-            string qText = currentCategory.questions[currentQIndex].text;
-            uiManager.UpdateScoreUI(qText, score);
-        }
-        else
-        {
-            EndGame();
-        }
+        // 1. Reset the time values
+        timerRemaining = timerTotalDuration;
+        uiManager.UpdateTimerDisplay(timerRemaining);
+
+        // 2. AUTOMATICALLY START THE TIMER
+        isTimerRunning = true; 
+        
+        // 3. Update the Operator UI button to show "PAUSE" (Red)
+        uiManager.UpdateTimerStatusUI(true);
+
+        // 4. Update the text
+        string qText = currentCategory.questions[currentQIndex].text;
+        uiManager.UpdateScoreUI(qText, score);
     }
+    else
+    {
+        // If game is over, stop the timer
+        isTimerRunning = false;
+        uiManager.UpdateTimerStatusUI(false);
+        EndGame();
+    }
+}   
 
     public void OnClick_Answer(bool isYes)
     {
@@ -396,30 +422,30 @@ public class KashkoolController : MonoBehaviour
     }
 
     public void OnClick_RestartGame()
-{
-    // Stop everything
-    StopAllCoroutines();
-    isBusy = false;
-    isTimerRunning = false;
+    {
+        // Stop everything
+        StopAllCoroutines();
+        isBusy = false;
+        isTimerRunning = false;
 
-    // Clear saved data
-    dataManager.ClearSave();
+        // Clear saved data
+        dataManager.ClearSave();
 
-    // Reload the current scene completely
-    SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
-}
+        // Reload the current scene completely
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+    }
 
 
-public void OnClick_ExitGame()
-{
-    Debug.Log("Exiting Game...");
+    public void OnClick_ExitGame()
+    {
+        Debug.Log("Exiting Game...");
 
-    #if UNITY_EDITOR
+#if UNITY_EDITOR
         UnityEditor.EditorApplication.isPlaying = false;
-    #else
+#else
         Application.Quit();
-    #endif
-}
+#endif
+    }
 
     // --- SAVE / LOAD ---
     void SaveProgress()
