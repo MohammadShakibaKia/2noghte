@@ -142,10 +142,9 @@ public class KashkoolController : MonoBehaviour
 
     private void OnTimerEnd()
     {
-        Debug.Log("Time is up!");
-        // Play sound here if needed
-        OnClick_Answer(false);
-
+         Debug.Log("Time is up!");
+    isTimerRunning = false;
+    uiManager.UpdateTimerStatusUI(false);
     }
 
     // --- REVEAL SEQUENCE ---
